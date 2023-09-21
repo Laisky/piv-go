@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build darwin || linux || freebsd || openbsd
-// +build darwin linux freebsd openbsd
+//go:build darwin || linux || freebsd || openbsd || amd64 || arm64
+// +build darwin linux freebsd openbsd amd64 arm64
 
 package piv
 
