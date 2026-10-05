@@ -33,7 +33,12 @@ import (
 // math/big exponentiation is test-only and is not a production RSA implementation.
 func softwareRSAKey(t *testing.T) (*rsa.PrivateKey, *keyRSA) {
 	t.Helper()
-	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	return softwareRSAKeySize(t, 2048)
+}
+
+func softwareRSAKeySize(t *testing.T, bits int) (*rsa.PrivateKey, *keyRSA) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,34 +104,61 @@ func TestRSADecryptOptions(t *testing.T) {
 }
 
 func TestRSADecryptRoundTrips(t *testing.T) {
-	priv, key := softwareRSAKey(t)
-	tests := []struct {
-		name string
-		opts crypto.DecrypterOpts
-		max  int
-	}{
-		{"legacy", nil, priv.Size() - 11},
-		{"explicit PKCS1v15", &rsa.PKCS1v15DecryptOptions{}, priv.Size() - 11},
-		{"OAEP SHA256", &rsa.OAEPOptions{Hash: crypto.SHA256, Label: []byte("context")}, priv.Size() - 2*sha256.Size - 2},
-		{"OAEP SHA512", &rsa.OAEPOptions{Hash: crypto.SHA512}, priv.Size() - 2*sha512.Size - 2},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for _, n := range []int{0, 16, tt.max} {
-				message := bytes.Repeat([]byte{0x42}, n)
-				var ciphertext []byte
-				var err error
-				if o, ok := tt.opts.(*rsa.OAEPOptions); ok {
-					ciphertext, err = rsa.EncryptOAEP(o.Hash.New(), rand.Reader, &priv.PublicKey, message, o.Label)
-				} else {
-					ciphertext, err = rsa.EncryptPKCS1v15(rand.Reader, &priv.PublicKey, message)
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				got, err := key.Decrypt(rand.Reader, ciphertext, tt.opts)
-				if err != nil || !bytes.Equal(got, message) {
-					t.Fatalf("length %d: got %x, err %v", n, got, err)
+	for _, bits := range []int{1024, 2048, 3072, 4096} {
+		t.Run(fmt.Sprintf("RSA%d", bits), func(t *testing.T) {
+			priv, key := softwareRSAKeySize(t, bits)
+			tests := []struct {
+				name string
+				opts crypto.DecrypterOpts
+				max  int
+			}{
+				{"legacy", nil, priv.Size() - 11},
+				{"explicit PKCS1v15", &rsa.PKCS1v15DecryptOptions{}, priv.Size() - 11},
+				{"OAEP nil label", &rsa.OAEPOptions{Hash: crypto.SHA256}, priv.Size() - 2*sha256.Size - 2},
+				{"OAEP empty label", &rsa.OAEPOptions{Hash: crypto.SHA256, Label: []byte{}}, priv.Size() - 2*sha256.Size - 2},
+				{"OAEP binary label same MGF", &rsa.OAEPOptions{Hash: crypto.SHA256, MGFHash: crypto.SHA256, Label: []byte{0, 0xff, 0, 1}}, priv.Size() - 2*sha256.Size - 2},
+			}
+			if bits >= 2048 {
+				tests = append(tests, struct {
+					name string
+					opts crypto.DecrypterOpts
+					max  int
+				}{"OAEP SHA512", &rsa.OAEPOptions{Hash: crypto.SHA512}, priv.Size() - 2*sha512.Size - 2})
+			}
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					for _, n := range []int{0, 16, tt.max} {
+						t.Run(fmt.Sprintf("length-%d", n), func(t *testing.T) {
+							message := make([]byte, n)
+							for i := range message {
+								message[i] = []byte{0, 0x42, 0xff, 0}[i%4]
+							}
+							var ciphertext []byte
+							var err error
+							if o, ok := tt.opts.(*rsa.OAEPOptions); ok {
+								ciphertext, err = rsa.EncryptOAEP(o.Hash.New(), rand.Reader, &priv.PublicKey, message, o.Label)
+							} else {
+								ciphertext, err = rsa.EncryptPKCS1v15(rand.Reader, &priv.PublicKey, message)
+							}
+							if err != nil {
+								t.Fatal(err)
+							}
+							control, controlErr := priv.Decrypt(rand.Reader, ciphertext, tt.opts)
+							got, err := key.Decrypt(rand.Reader, ciphertext, tt.opts)
+							if controlErr != nil || err != nil || !bytes.Equal(control, message) || !bytes.Equal(got, message) {
+								t.Fatalf("got %x/%v, software control %x/%v", got, err, control, controlErr)
+							}
+						})
+					}
+				})
+			}
+			if bits == 1024 {
+				ciphertext := make([]byte, priv.Size())
+				calls := 0
+				key.rawDecrypt = func([]byte) ([]byte, error) { calls++; return nil, nil }
+				got, err := key.Decrypt(nil, ciphertext, &rsa.OAEPOptions{Hash: crypto.SHA512})
+				if !errors.Is(err, rsa.ErrDecryption) || got != nil || calls != 0 {
+					t.Fatalf("1024/SHA512 capacity: got %x/%v, raw calls %d", got, err, calls)
 				}
 			}
 		})

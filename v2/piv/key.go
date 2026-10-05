@@ -1168,9 +1168,17 @@ func pinPolicy(yk *YubiKey, slot Slot) (PINPolicy, error) {
 // RSA decrypters accept nil or *rsa.PKCS1v15DecryptOptions for PKCS #1 v1.5,
 // or *rsa.OAEPOptions for OAEP, including Hash, MGFHash and Label. Ciphertexts
 // must be exactly the RSA modulus size. Use OAEP with SHA-256 in new protocols.
-// Legacy PKCS #1 v1.5 decryption exposes padding validity unless SessionKeyLen
-// is used and the resulting session key is handled without revealing whether
-// it is correct. See crypto/rsa.DecryptPKCS1v15SessionKey for the requirements.
+// PKCS #1 v1.5 is retained for compatibility. It is deprecated in Go 1.26,
+// including session-key decryption, because padding validity and protocol
+// behavior are fragile. SessionKeyLen uses randomized fallback, but callers
+// must still avoid revealing whether the session key is correct. See
+// crypto/rsa.DecryptPKCS1v15SessionKey for the requirements.
+//
+// Decryption validates ciphertext length/range and options before prompting for
+// authentication. In non-session mode, padding failures return rsa.ErrDecryption
+// and no plaintext.
+// A positive SessionKeyLen consumes that many bytes from rand before
+// authentication and returns a random fallback on bad padding or message length.
 //
 // If the public key hasn't been stored externally, it can be provided by
 // fetching the slot's attestation certificate:
@@ -1741,7 +1749,13 @@ func rsaAlg(pub *rsa.PublicKey) (byte, error) {
 	}
 }
 
-func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
+// apduTransmitter is the narrow transport boundary used by raw RSA decryption.
+// *scTx provides the production implementation.
+type apduTransmitter interface {
+	Transmit(apdu) ([]byte, error)
+}
+
+func ykDecryptRSA(tx apduTransmitter, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
 	alg, err := rsaAlg(pub)
 	if err != nil {
 		return nil, err
