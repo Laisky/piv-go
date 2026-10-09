@@ -404,11 +404,11 @@ var retiredKeyManagementSlots = map[uint32]Slot{
 // RetiredKeyManagementSlot provides access to "retired" slots. Slots meant for old Key Management
 // keys that have been rotated. YubiKeys 4 and later support values between 0x82 and 0x95 (inclusive).
 //
-//     slot, ok := RetiredKeyManagementSlot(0x82)
-//     if !ok {
-//         // unrecognized slot
-//     }
-//     pub, err := yk.GenerateKey(managementKey, slot, key)
+//	slot, ok := RetiredKeyManagementSlot(0x82)
+//	if !ok {
+//	    // unrecognized slot
+//	}
+//	pub, err := yk.GenerateKey(managementKey, slot, key)
 //
 // https://developers.yubico.com/PIV/Introduction/Certificate_slots.html#_slot_82_95_retired_key_management
 func RetiredKeyManagementSlot(key uint32) (Slot, bool) {
@@ -806,15 +806,29 @@ func pinPolicy(yk *YubiKey, slot Slot) (PINPolicy, error) {
 // stored in the slot. The returned key implements crypto.Signer and/or
 // crypto.Decrypter depending on the key type.
 //
+// RSA decrypters accept nil or *rsa.PKCS1v15DecryptOptions for PKCS #1 v1.5,
+// or *rsa.OAEPOptions for OAEP, including Hash, MGFHash and Label. Ciphertexts
+// must be exactly the RSA modulus size. Use OAEP with SHA-256 in new protocols.
+// PKCS #1 v1.5 is retained for compatibility. It is deprecated in Go 1.26,
+// including session-key decryption, because padding validity and protocol
+// behavior are fragile. SessionKeyLen uses randomized fallback, but callers
+// must still avoid revealing whether the session key is correct. See
+// crypto/rsa.DecryptPKCS1v15SessionKey for the requirements.
+//
+// Decryption validates ciphertext length/range and options before prompting for
+// authentication. In non-session mode, padding failures return rsa.ErrDecryption
+// and no plaintext.
+// A positive SessionKeyLen consumes that many bytes from rand before
+// authentication and returns a random fallback on bad padding or message length.
+//
 // If the public key hasn't been stored externally, it can be provided by
 // fetching the slot's attestation certificate:
 //
-//		cert, err := yk.Attest(slot)
-//		if err != nil {
-//			// ...
-//		}
-//		priv, err := yk.PrivateKey(slot, cert.PublicKey, auth)
-//
+//	cert, err := yk.Attest(slot)
+//	if err != nil {
+//		// ...
+//	}
+//	priv, err := yk.PrivateKey(slot, cert.PublicKey, auth)
 func (yk *YubiKey) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) (crypto.PrivateKey, error) {
 	pp := PINPolicyNever
 	if _, ok := pinPolicyMap[auth.PINPolicy]; ok {
@@ -837,7 +851,14 @@ func (yk *YubiKey) PrivateKey(slot Slot, public crypto.PublicKey, auth KeyAuth) 
 	case ed25519.PublicKey:
 		return &keyEd25519{yk, slot, pub, auth, pp}, nil
 	case *rsa.PublicKey:
-		return &keyRSA{yk, slot, pub, auth, pp}, nil
+		return &keyRSA{
+			yk: yk, slot: slot, pub: pub, auth: auth, pp: pp,
+			rawDecrypt: func(msg []byte) ([]byte, error) {
+				return auth.do(yk, pp, func(tx *scTx) ([]byte, error) {
+					return ykDecryptRSA(tx, slot, pub, msg)
+				})
+			},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported public key type: %T", public)
 	}
@@ -1066,6 +1087,8 @@ type keyRSA struct {
 	pub  *rsa.PublicKey
 	auth KeyAuth
 	pp   PINPolicy
+	// rawDecrypt authenticates and performs the card's raw RSA operation.
+	rawDecrypt func([]byte) ([]byte, error)
 }
 
 func (k *keyRSA) Public() crypto.PublicKey {
@@ -1078,10 +1101,20 @@ func (k *keyRSA) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]
 	})
 }
 
+// SupportsRSAOAEP reports that this key honors rsa.OAEPOptions during decryption.
+// Applications use this capability to reject older implementations that ignore
+// decryption options. It does not attest hardware or remove legacy protocol risk.
+func (k *keyRSA) SupportsRSAOAEP() bool { return true }
+
+// Decrypt implements crypto.Decrypter.
 func (k *keyRSA) Decrypt(rand io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {
-	return k.auth.do(k.yk, k.pp, func(tx *scTx) ([]byte, error) {
-		return ykDecryptRSA(tx, k.slot, k.pub, msg)
-	})
+	if k.pub == nil || k.pub.N == nil {
+		return nil, rsa.ErrDecryption
+	}
+	if _, err := rsaAlg(k.pub); err != nil {
+		return nil, err
+	}
+	return rsafork.Decrypt(rand, k.pub, msg, opts, k.rawDecrypt)
 }
 
 func ykSignECDSA(tx *scTx, slot Slot, pub *ecdsa.PublicKey, digest []byte) ([]byte, error) {
@@ -1248,7 +1281,13 @@ func rsaAlg(pub *rsa.PublicKey) (byte, error) {
 	}
 }
 
-func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
+// apduTransmitter is the narrow transport boundary used by raw RSA decryption.
+// *scTx provides the production implementation.
+type apduTransmitter interface {
+	Transmit(apdu) ([]byte, error)
+}
+
+func ykDecryptRSA(tx apduTransmitter, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte, error) {
 	alg, err := rsaAlg(pub)
 	if err != nil {
 		return nil, err
@@ -1274,14 +1313,7 @@ func ykDecryptRSA(tx *scTx, slot Slot, pub *rsa.PublicKey, data []byte) ([]byte,
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal response signature: %v", err)
 	}
-	// Decrypted blob contains a bunch of random data. Look for a NULL byte which
-	// indicates where the plain text starts.
-	for i := 2; i+1 < len(decrypted); i++ {
-		if decrypted[i] == 0x00 {
-			return decrypted[i+1:], nil
-		}
-	}
-	return nil, fmt.Errorf("invalid pkcs#1 v1.5 padding")
+	return decrypted, nil
 }
 
 // PKCS#1 v15 is largely informed by the standard library

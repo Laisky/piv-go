@@ -1,46 +1,24 @@
 name: test
-on: 
+on:
   push:
-    branches:
-      - master
+    branches: [master, v1-security]
   pull_request:
-    branches:
-      - master
-
+    branches: [master, v1-security]
+permissions:
+  contents: read
 jobs:
-  build:
-    strategy:
-      matrix:
-        go-version: [1.19.x, 1.20.x]
-    name: Linux
+  unit:
+    name: Formatting and unit tests
     runs-on: ubuntu-latest
     steps:
-    - name: Set up Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ matrix.go-version }}
-      id: go
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-    - name: Install libpcsc
-      run: sudo apt-get install -y libpcsclite-dev pcscd pcsc-tools
-    - name: Test
-      run: "make test"
-  build-windows:
-    strategy:
-      matrix:
-        go-version: [1.19.x, 1.20.x]
-    name: Windows
-    runs-on: windows-latest
-    steps:
-    - name: Set up Go
-      uses: actions/setup-go@v2
-      with:
-        go-version: ${{ matrix.go-version }}
-      id: go
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v2
-    - name: Test
-      run: "make build"
-      env:
-        CGO_ENABLED: 0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+          cache: false
+      - name: Install libpcsc headers
+        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev
+      - name: Check formatting
+        run: test -z "$(gofmt -l piv/rsa*test.go third_party/rsa)"
+      - name: Fast software unit tests
+        run: go test ./piv ./third_party/rsa

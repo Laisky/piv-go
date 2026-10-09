@@ -35,6 +35,14 @@ func init() {
 		"Flag required to run tests that access the yubikey")
 }
 
+// requireHardwareTests gates all PC/SC access before enumeration or context creation.
+func requireHardwareTests(t *testing.T) {
+	t.Helper()
+	if !canModifyYubiKey {
+		t.Skip("hardware tests disabled; -wipe-yubikey explicitly enables potentially destructive device tests")
+	}
+}
+
 func testGetVersion(t *testing.T, h *scHandle) {
 	tx, err := h.Begin()
 	if err != nil {
@@ -69,12 +77,14 @@ func testRequiresVersion(t *testing.T, yk *YubiKey, major, minor, patch int) {
 func TestGetVersion(t *testing.T) { runHandleTest(t, testGetVersion) }
 
 func TestCards(t *testing.T) {
+	requireHardwareTests(t)
 	if _, err := Cards(); err != nil {
 		t.Fatalf("listing cards: %v", err)
 	}
 }
 
 func newTestYubiKey(t *testing.T) (*YubiKey, func()) {
+	requireHardwareTests(t)
 	cards, err := Cards()
 	if err != nil {
 		t.Fatalf("listing cards: %v", err)
@@ -106,6 +116,7 @@ func TestNewYubiKey(t *testing.T) {
 }
 
 func TestMultipleConnections(t *testing.T) {
+	requireHardwareTests(t)
 	cards, err := Cards()
 	if err != nil {
 		t.Fatalf("listing cards: %v", err)

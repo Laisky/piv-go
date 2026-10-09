@@ -1,3 +1,23 @@
+# Compatible maintained PIV fork
+
+This branch declares the original github.com/go-piv/piv-go module path to preserve existing exported Go types. Applications explicitly select this reviewed fork in their root go.mod:
+
+    replace github.com/go-piv/piv-go => github.com/Laisky/piv-go <pinned-v1-version>
+
+Library replacements do not propagate to consumers. The final pinned version is recorded in the downstream compatibility PR. Without this replacement, the additive OAEP API refuses the original options-ignoring dependency before decryption; legacy APIs continue to build.
+
+Valid canonical PKCS #1 v1.5 ciphertext remains supported for restricted historical-data migration. Keeping arbitrary-message legacy decryption does not remove its padding-oracle risk. The concrete RSA decrypter advertises SupportsRSAOAEP only because it honors reviewed OAEP options; this capability is not a hardware attestation.
+
+No management API, 3DES management-key behavior, signing, ECDH, or non-RSA primitive changes are part of this backport. RSA-1024/2048 remain the supported PIV sizes. The Go 1.20 floor is needed for OAEPOptions.MGFHash.
+
+## Maintained v1 security backport
+
+This fork is based on upstream piv-go v1.11.0 (851fa59). The reviewed RSA option/padding fix from bb5951c is backported without the v2 API or firmware expansion. Low-level nil/PKCS #1 v1.5 options remain for historical-data compatibility and carry legacy protocol risk. The additive go-yubikey/v2 OAEP functions use explicit options and reject an unreviewed dependency.
+
+The software decoder, Go-source provenance and licenses are unchanged from the reviewed fix. Tests substitute raw RSA or APDU transport; they do not qualify a physical card, firmware, PIN/touch behavior, timing or FIPS operation. Upstream PR 195 and the separate v2/own-namespace alternatives remain intact.
+
+Default tests gate PC/SC access before context creation or reader enumeration. The existing -wipe-yubikey flag remains required for the separate, potentially destructive legacy hardware suite; it is never enabled in CI.
+
 This is not an officially supported Google product
 
 # A Go YubiKey PIV implementation
@@ -271,19 +291,13 @@ Non-YubiKey smartcards that implement the PIV standard are not officially suppor
 
 ## Testing
 
-Tests automatically find connected available YubiKeys, but won't modify the
-smart card without the `--wipe-yubikey` flag. To let the tests modify your
-YubiKey's PIV applet, run:
+Default tests skip all physical access before PC/SC context creation or reader enumeration:
 
-```
-go test -v ./piv --wipe-yubikey
-```
+    go test -race ./...
 
-Longer tests can be skipped with the `--test.short` flag.
+The inherited -wipe-yubikey flag enables the separate legacy hardware suite, including operations that modify/reset the PIV applet. It is never enabled in CI and is not part of historical-ciphertext software acceptance. Do not enable it for routine validation of existing data.
 
-```
-go test -v --short ./piv --wipe-yubikey
-```
+Physical acceptance should separately use existing approved keys and selected positive decryption/signing controls without reset, provisioning or credential changes. Software and APDU-seam tests do not substitute for that acceptance.
 
 ## Why?
 
