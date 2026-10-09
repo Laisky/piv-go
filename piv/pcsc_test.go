@@ -21,6 +21,7 @@ import (
 )
 
 func runContextTest(t *testing.T, f func(t *testing.T, c *scContext)) {
+	requireHardwareTests(t)
 	ctx, err := newSCContext()
 	if err != nil {
 		t.Fatalf("creating context: %v", err)

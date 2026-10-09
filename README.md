@@ -18,6 +18,9 @@ The software decoding implementation, Go-source provenance and licenses are
 unchanged from the reviewed fix. Tests substitute raw RSA or APDU transport;
 they do not qualify a physical card, PIN/touch behavior, firmware, timing or
 FIPS operation. Upstream PR 195 and the separate v2 proposal remain intact.
+Default tests now gate every PC/SC access before context creation or reader
+enumeration. The existing -wipe-yubikey flag remains required for the separate,
+potentially destructive legacy hardware suite; it is never enabled in CI.
 
 This is not an officially supported Google product
 

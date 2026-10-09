@@ -20,8 +20,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
+          cache: false
       - name: Install libpcsc
-        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev pcscd
+        run: sudo apt-get update && sudo apt-get install -y libpcsclite-dev
       - name: Test and vet
         run: |
           go test -race -count=1 ./...
@@ -37,6 +38,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go-version }}
+          cache: false
       - name: Build
         run: go build ./...
         env:
