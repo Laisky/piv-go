@@ -291,19 +291,13 @@ Non-YubiKey smartcards that implement the PIV standard are not officially suppor
 
 ## Testing
 
-Tests automatically find connected available YubiKeys, but won't modify the
-smart card without the `--wipe-yubikey` flag. To let the tests modify your
-YubiKey's PIV applet, run:
+Default tests skip all physical access before PC/SC context creation or reader enumeration:
 
-```
-go test -v ./piv --wipe-yubikey
-```
+    go test -race ./...
 
-Longer tests can be skipped with the `--test.short` flag.
+The inherited -wipe-yubikey flag enables the separate legacy hardware suite, including operations that modify/reset the PIV applet. It is never enabled in CI and is not part of historical-ciphertext software acceptance. Do not enable it for routine validation of existing data.
 
-```
-go test -v --short ./piv --wipe-yubikey
-```
+Physical acceptance should separately use existing approved keys and selected positive decryption/signing controls without reset, provisioning or credential changes. Software and APDU-seam tests do not substitute for that acceptance.
 
 ## Why?
 
