@@ -2,7 +2,28 @@ This is not an officially supported Google product
 
 # A Go YubiKey PIV implementation
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/go-piv/piv-go/v2/piv.svg)](https://pkg.go.dev/github.com/go-piv/piv-go/v2/piv)
+## Maintained Laisky fork
+
+This fork publishes the directly consumable Go module
+`github.com/Laisky/piv-go/v2`. Import `github.com/Laisky/piv-go/v2/piv`
+in applications and libraries; no consumer-side `replace` directive is required.
+The fork includes the reviewed RSA decryption fix from upstream PR 195 at
+`bb5951c53fb1e4e77cf2f42ce4fdcc7119bd6478`, with Go-source notices and
+provenance retained. Upstream PR 195 remains open independently of this fork.
+
+The fork's public types have a different Go package identity from
+`github.com/go-piv/piv-go/piv` and `github.com/go-piv/piv-go/v2/piv`.
+Use one matching import path throughout each consumer. RSA decryption honors
+OAEP options; use SHA-256, matching MGF1 and label parameters for new protocols.
+Legacy PKCS #1 v1.5 support is retained by this low-level package for protocol
+compatibility, and remains unsafe if exposed as an arbitrary-message oracle.
+See the RSA decryption compatibility section below.
+
+Qualification uses software tests and mocked APDU responses. It does not establish
+physical-device, PIN/touch, firmware timing, PC/SC chaining, or FIPS acceptance.
+
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/Laisky/piv-go/v2/piv.svg)](https://pkg.go.dev/github.com/Laisky/piv-go/v2/piv)
 
 YubiKeys implement the PIV specification for managing smart card certificates.
 This applet is a simpler alternative to GPG for managing asymmetric keys on a
@@ -19,7 +40,7 @@ V2 of this package was released in 2024 to support newer kinds of management
 keys, and is now the default branch for new features. The import path is:
 
 ```
-import "github.com/go-piv/piv-go/v2/piv"
+import "github.com/Laisky/piv-go/v2/piv"
 ```
 
 ## Examples

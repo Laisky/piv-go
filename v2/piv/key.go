@@ -33,7 +33,7 @@ import (
 	"strconv"
 	"strings"
 
-	rsafork "github.com/go-piv/piv-go/v2/third_party/rsa"
+	rsafork "github.com/Laisky/piv-go/v2/third_party/rsa"
 	"golang.org/x/crypto/cryptobyte"
 
 	_ "embed"
