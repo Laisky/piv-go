@@ -1168,9 +1168,11 @@ func pinPolicy(yk *YubiKey, slot Slot) (PINPolicy, error) {
 // RSA decrypters accept nil or *rsa.PKCS1v15DecryptOptions for PKCS #1 v1.5,
 // or *rsa.OAEPOptions for OAEP, including Hash, MGFHash and Label. Ciphertexts
 // must be exactly the RSA modulus size. Use OAEP with SHA-256 in new protocols.
-// PKCS #1 v1.5 is retained for compatibility. It is deprecated in Go 1.26,
-// including session-key decryption, because padding validity and protocol
-// behavior are fragile. SessionKeyLen uses randomized fallback, but callers
+// PKCS #1 v1.5 decryption mode is deprecated and retained for compatibility.
+// Arbitrary-message legacy decryption should be restricted to trusted historical
+// migration: observable padding or protocol behavior can still expose an oracle.
+// Select the algorithm from trusted protocol metadata, never by trying OAEP and
+// falling back to PKCS #1 v1.5. SessionKeyLen uses randomized fallback, but callers
 // must still avoid revealing whether the session key is correct. See
 // crypto/rsa.DecryptPKCS1v15SessionKey for the requirements.
 //
@@ -1535,7 +1537,9 @@ func (k *keyRSA) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]
 	})
 }
 
-// Decrypt implements crypto.Decrypter.
+// Decrypt implements crypto.Decrypter with the explicitly selected padding mode.
+// Nil options retain the deprecated PKCS #1 v1.5 mode for historical ciphertext.
+// OAEP failures return no plaintext and never fall back to legacy decoding.
 func (k *keyRSA) Decrypt(rand io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {
 	if k.pub == nil || k.pub.N == nil {
 		return nil, rsa.ErrDecryption

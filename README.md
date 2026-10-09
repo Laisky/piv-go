@@ -322,14 +322,28 @@ directly use browser U2F challenges for smart cards.
 ### RSA decryption options and compatibility
 
 RSA keys returned by `YubiKey.PrivateKey` implement `crypto.Decrypter`.
-For new protocols, use `&rsa.OAEPOptions{Hash: crypto.SHA256}` and matching
-OAEP encryption parameters. `Hash`, `MGFHash` (zero defaults to `Hash`), and
+For new protocols, use explicit OAEP options and matching encryption parameters:
+
+```go
+ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, publicKey, plaintext, nil)
+// Handle err before using ciphertext.
+plaintext, err = decrypter.Decrypt(rand.Reader, ciphertext, &rsa.OAEPOptions{
+    Hash: crypto.SHA256, MGFHash: crypto.SHA256,
+})
+```
+
+Choose the algorithm from trusted protocol metadata. Never retry failed OAEP
+ciphertext with PKCS #1 v1.5. Existing exported APIs and valid historical ciphertext
+remain supported; reencryption is not required to read existing data.
+
+`Hash`, `MGFHash` (zero defaults to `Hash`), and
 `Label` are honored. The selected hashes must be linked into the caller's
 binary, as required by `crypto.Hash.Available`.
 
 Valid PKCS #1 v1.5 ciphertext remains supported with nil options or
-`&rsa.PKCS1v15DecryptOptions{SessionKeyLen: 0}`. It is deprecated in Go 1.26,
-including session-key decryption, because padding and protocol behavior are
+`&rsa.PKCS1v15DecryptOptions{SessionKeyLen: 0}`. This legacy decryption mode
+is deprecated and should be restricted to trusted historical migration. Go 1.26
+also deprecates PKCS #1 v1.5 session-key decryption because protocol behavior is
 fragile. Applications that expose padding failures can still form a decryption
 oracle; normalizing errors alone does not remove that risk. Avoid sharing an RSA
 key between an exposed legacy decryptor and OAEP.
@@ -356,3 +370,10 @@ Public method signatures, RSA signing, and non-RSA key behavior are unchanged.
 Software regression tests cover decoding, factory preflight, and logical APDU
 construction/parsing. They do not validate physical card behavior, PIN/touch
 handling, PC/SC command chaining, device timing, or FIPS compliance.
+
+Historical regression fixtures come from the actual pinned `go-utils/v6 v6.2.1`
+RSA encryptor used by `go-yubikey`. They cover valid single-block RSA-1024/2048
+ciphertext (including leading zero bytes) with both nil and explicit legacy
+options. Empty and concatenated helper output remains outside the one-block
+PIV contract. The fixtures contain only generated software keys and public test
+data; see `v2/piv/testdata/README.md`.
