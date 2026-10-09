@@ -1,3 +1,24 @@
+## Maintained v1 security backport
+
+This fork is based on upstream piv-go v1.11.0 (851fa59). Consume
+github.com/Laisky/piv-go directly; a library's replace directive would not
+propagate to applications. The own-fork import path changes concrete PIV type
+identity, so callers must update imports together.
+
+The reviewed RSA option/padding fix from bb5951c is backported without the v2
+API or firmware expansion. Management-key APIs retain [24]byte and 3DES;
+RSA device operations retain v1's 1024/2048-bit algorithms. Larger RSA algorithms
+fail before authentication. Go 1.20 is required for rsa.OAEPOptions.MGFHash.
+
+Use explicit RSA-OAEP SHA-256 in new protocols. Low-level nil/PKCS #1 v1.5
+options remain only for v1 API compatibility and carry legacy protocol risk;
+go-yubikey/v3 provides a strict OAEP-only contract with no fallback.
+
+The software decoding implementation, Go-source provenance and licenses are
+unchanged from the reviewed fix. Tests substitute raw RSA or APDU transport;
+they do not qualify a physical card, PIN/touch behavior, firmware, timing or
+FIPS operation. Upstream PR 195 and the separate v2 proposal remain intact.
+
 This is not an officially supported Google product
 
 # A Go YubiKey PIV implementation
