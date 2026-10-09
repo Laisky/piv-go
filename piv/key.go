@@ -32,7 +32,7 @@ import (
 	"strconv"
 	"strings"
 
-	rsafork "github.com/Laisky/piv-go/third_party/rsa"
+	rsafork "github.com/go-piv/piv-go/third_party/rsa"
 )
 
 // errMismatchingAlgorithms is returned when a cryptographic operation
@@ -1100,6 +1100,11 @@ func (k *keyRSA) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]
 		return ykSignRSA(tx, rand, k.slot, k.pub, digest, opts)
 	})
 }
+
+// SupportsRSAOAEP reports that this key honors rsa.OAEPOptions during decryption.
+// Applications use this capability to reject older implementations that ignore
+// decryption options. It does not attest hardware or remove legacy protocol risk.
+func (k *keyRSA) SupportsRSAOAEP() bool { return true }
 
 // Decrypt implements crypto.Decrypter.
 func (k *keyRSA) Decrypt(rand io.Reader, msg []byte, opts crypto.DecrypterOpts) ([]byte, error) {

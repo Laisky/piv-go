@@ -1,32 +1,28 @@
+# Compatible maintained PIV fork
+
+This branch declares the original github.com/go-piv/piv-go module path to preserve existing exported Go types. Applications explicitly select this reviewed fork in their root go.mod:
+
+    replace github.com/go-piv/piv-go => github.com/Laisky/piv-go <pinned-v1-version>
+
+Library replacements do not propagate to consumers. The final pinned version is recorded in the downstream compatibility PR. Without this replacement, the additive OAEP API refuses the original options-ignoring dependency before decryption; legacy APIs continue to build.
+
+Valid canonical PKCS #1 v1.5 ciphertext remains supported for restricted historical-data migration. Keeping arbitrary-message legacy decryption does not remove its padding-oracle risk. The concrete RSA decrypter advertises SupportsRSAOAEP only because it honors reviewed OAEP options; this capability is not a hardware attestation.
+
+No management API, 3DES management-key behavior, signing, ECDH, or non-RSA primitive changes are part of this backport. RSA-1024/2048 remain the supported PIV sizes. The Go 1.20 floor is needed for OAEPOptions.MGFHash.
+
 ## Maintained v1 security backport
 
-This fork is based on upstream piv-go v1.11.0 (851fa59). Consume
-github.com/Laisky/piv-go directly; a library's replace directive would not
-propagate to applications. The own-fork import path changes concrete PIV type
-identity, so callers must update imports together.
+This fork is based on upstream piv-go v1.11.0 (851fa59). The reviewed RSA option/padding fix from bb5951c is backported without the v2 API or firmware expansion. Low-level nil/PKCS #1 v1.5 options remain for historical-data compatibility and carry legacy protocol risk. The additive go-yubikey/v2 OAEP functions use explicit options and reject an unreviewed dependency.
 
-The reviewed RSA option/padding fix from bb5951c is backported without the v2
-API or firmware expansion. Management-key APIs retain [24]byte and 3DES;
-RSA device operations retain v1's 1024/2048-bit algorithms. Larger RSA algorithms
-fail before authentication. Go 1.20 is required for rsa.OAEPOptions.MGFHash.
+The software decoder, Go-source provenance and licenses are unchanged from the reviewed fix. Tests substitute raw RSA or APDU transport; they do not qualify a physical card, firmware, PIN/touch behavior, timing or FIPS operation. Upstream PR 195 and the separate v2/own-namespace alternatives remain intact.
 
-Use explicit RSA-OAEP SHA-256 in new protocols. Low-level nil/PKCS #1 v1.5
-options remain only for v1 API compatibility and carry legacy protocol risk;
-go-yubikey/v3 provides a strict OAEP-only contract with no fallback.
-
-The software decoding implementation, Go-source provenance and licenses are
-unchanged from the reviewed fix. Tests substitute raw RSA or APDU transport;
-they do not qualify a physical card, PIN/touch behavior, firmware, timing or
-FIPS operation. Upstream PR 195 and the separate v2 proposal remain intact.
-Default tests now gate every PC/SC access before context creation or reader
-enumeration. The existing -wipe-yubikey flag remains required for the separate,
-potentially destructive legacy hardware suite; it is never enabled in CI.
+Default tests gate PC/SC access before context creation or reader enumeration. The existing -wipe-yubikey flag remains required for the separate, potentially destructive legacy hardware suite; it is never enabled in CI.
 
 This is not an officially supported Google product
 
 # A Go YubiKey PIV implementation
 
-[![GoDoc](https://godoc.org/github.com/Laisky/piv-go/piv?status.svg)](https://godoc.org/github.com/Laisky/piv-go/piv)
+[![GoDoc](https://godoc.org/github.com/go-piv/piv-go/piv?status.svg)](https://godoc.org/github.com/go-piv/piv-go/piv)
 
 YubiKeys implement the PIV specification for managing smart card certificates.
 This applet is a simpler alternative to GPG for managing asymmetric keys on a
