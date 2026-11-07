@@ -18,6 +18,8 @@ The software decoder, Go-source provenance and licenses are unchanged from the r
 
 Default tests gate PC/SC access before context creation or reader enumeration. The existing -wipe-yubikey flag remains required for the separate, potentially destructive legacy hardware suite; it is never enabled in CI.
 
+Open releases the card handle and PC/SC context on every failure after it connects, and Connect frees its C copy of the reader name. PIV_GO_TEST_NON_PIV_READER opts into the non-destructive tests for both: it names a reader holding a card without the PIV applet and implies a running PC/SC daemon. CI points it at a vsmartcard virtual card, never at a YubiKey.
+
 This is not an officially supported Google product
 
 # A Go YubiKey PIV implementation
