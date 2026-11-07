@@ -22,3 +22,40 @@ jobs:
         run: test -z "$(gofmt -l piv/rsa*test.go third_party/rsa)"
       - name: Fast software unit tests
         run: go test ./piv ./third_party/rsa
+  pcsc-lifecycle:
+    name: PC/SC lifecycle tests on a virtual card
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+          cache: false
+      - name: Install pcscd and a virtual smart card
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpcsclite-dev pcscd vsmartcard-vpcd vsmartcard-vpicc python3-pycryptodome
+      - name: Tests against a card without the PIV applet
+        env:
+          PIV_GO_TEST_NON_PIV_READER: Virtual PCD 00 00
+        run: |
+          wait_vpcd() {
+            for _ in $(seq 1 50); do
+              ss -Htn state "$1" '( sport = :35963 )' | grep -q . && return
+              sleep 0.2
+            done
+            echo "vpcd port 35963 never reached state $1" >&2
+            return 1
+          }
+          # Run pcscd directly so polkit cannot reject the runner's session.
+          sudo systemctl stop pcscd.socket pcscd.service || true
+          sudo pcscd --foreground --disable-polkit > pcscd.log 2>&1 &
+          # vicc exits unless the vpcd driver loaded by pcscd is already listening.
+          wait_vpcd listening
+          # The vicc ISO 7816 card has no PIV applet, so Open fails after it connects.
+          vicc --type iso7816 > vicc.log 2>&1 &
+          wait_vpcd established
+          go test ./piv -count=1 -v
+      - name: Show PC/SC logs
+        if: failure()
+        run: tail -n 50 pcscd.log vicc.log

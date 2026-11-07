@@ -161,10 +161,17 @@ func (c *client) Open(card string) (*YubiKey, error) {
 	}
 	tx, err := h.Begin()
 	if err != nil {
+		// Open returns no handle on failure, so the caller can't release the
+		// card. Without these closes the exclusive connection is held until
+		// the process exits and later opens fail with a sharing violation.
+		h.Close()
+		ctx.Close()
 		return nil, fmt.Errorf("beginning smart card transaction: %w", err)
 	}
 	if err := ykSelectApplication(tx, aidPIV[:]); err != nil {
 		tx.Close()
+		h.Close()
+		ctx.Close()
 		return nil, fmt.Errorf("selecting piv applet: %w", err)
 	}
 
